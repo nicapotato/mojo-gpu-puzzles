@@ -18,9 +18,13 @@ fn broadcast_add(
 ):
     row = thread_idx.y
     col = thread_idx.x
-    # FILL ME IN (roughly 2 lines)
+    idx = row * size + col
 
-
+    # output[idx] = a[row] + b[col]
+    if row < size and col < size:
+        output[idx] = a[col] + b[row]
+    
+    
 # ANCHOR_END: broadcast_add
 def main():
     with DeviceContext() as ctx:
