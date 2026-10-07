@@ -24,8 +24,41 @@ fn dot_product[
     b: LayoutTensor[mut=True, dtype, in_layout],
     size: Int,
 ):
-    # FILL ME IN (roughly 13 lines)
-    ...
+    shared = LayoutTensor[
+        dtype,
+        Layout.row_major(TPB),
+        MutableAnyOrigin,
+        address_space = AddressSpace.SHARED,
+    ].stack_allocation()
+    global_i = block_dim.x * block_idx.x + thread_idx.x
+    local_i = thread_idx.x
+    if global_i < size:
+        shared[local_i] = a[global_i] * b[global_i]
+
+    barrier()
+
+    # The following causes race condition: all threads writing to the same location
+    # out[0] += shared[local_i]
+
+    # Instead can do parallel reduction in shared memory as opposed to
+    # global memory which has no guarantee on synchronization.
+    # Loops using global memory can cause thread divergence because
+    # fundamentally GPUs execute threads in warps (groups of 32 threads typically)
+    # and warps can be scheduled independently.
+    # However, shared memory does not have such issues as long as we use `barrier()`
+    # correctly when we're in the same thread block.
+    stride = TPB // 2
+    while stride > 0:
+        if local_i < stride:
+            shared[local_i] += shared[local_i + stride]
+
+        barrier()
+        stride //= 2
+
+    # only thread 0 writes the final result
+    if local_i == 0:
+        output[0] = shared[0]
+
 
 
 # ANCHOR_END: dot_product_layout_tensor
